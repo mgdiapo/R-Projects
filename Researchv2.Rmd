@@ -1,0 +1,164 @@
+---
+title: "Michelle's research"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+liver_data<-read.csv("ALL DATAlivercancer_Sort.csv")
+head(liver_data,5)
+tail(liver_data,5)
+str(liver_data)
+```
+
+```{r}
+dfu = lapply(liver_data[], unique)
+dfu
+```
+#Drop trt, patient_workheet2, and id as those aren't what we're interested in. Drop HBV_PCR as it only has values 0 and NA, therfore probably not useful.
+
+```{r}
+naP = sum(is.na(liver_data$Platelets))
+naP
+naALT = sum(is.na(liver_data$ALT__SGPT_))
+naALT
+naAlK = sum(is.na(liver_data$Alk__Ph))
+naAlK
+naHCV = sum(is.na(liver_data$HCV_Ab))
+naHCV
+nahg = sum(is.na(liver_data$HG))
+nahg
+nab = sum(is.na(liver_data$bilirubin))
+nab
+naalb = sum(is.na(liver_data$S_Albumin))
+naalb
+naaAST = sum(is.na(liver_data$AST__SGOT_))
+```
+#Remove ALK__PH from model as more than half the observations have na values, therefore data wouldn't be that useful
+#Remove or impute observations which have na values in Platelets, ALT__SGPT_, HCV_Ab, and HG to clean dataset. Remove for now.
+
+```{r}
+dataclean = na.omit(subset(liver_data, select = -c(trt, patient_Worksheet_2, id, HBV_PCR, Alk__Ph), data = liver_data))
+str(dataclean)
+```
+
+```{r}
+dfcu = lapply(dataclean[], unique)
+dfcu
+```
+#Convert int-factors to type factor
+```{r}
+c = c("APC","FHIT","P15","P73","P14","P16","DAPK","RAR_","RASSF1A","O6MGMT","E_cadherin","hbs_ag1","methyl")
+dataclean[c] <- lapply(dataclean[c], factor)
+```
+```{r}
+str(dataclean)
+```
+#Full log model
+```{r}
+fit<-glm(type ~ ., data = dataclean, family = binomial())
+```
+```{r}
+summary(fit)
+```
+#Check factor variables in regards to type to see if prob  = 1 for some factors
+
+```{r}
+xa = aggregate(x = liver_data[c], by = liver_data["type"], FUN = sum)
+xa
+```
+#drop hbs_ag1 as only t patients have it
+```{r}
+fit2<-glm(type ~ .- hbs_ag1, data = dataclean, family = binomial())
+summary(fit2)
+```
+```{r}
+fit2b<-glm(type ~ APC + FHIT + P15 + P73 + P14 + P16 + DAPK + RAR_ + RASSF1A + O6MGMT  + E_cadherin + methyl,data = dataclean, family = binomial())
+summary(fit2b) 
+```
+#Most significant factors are APC1 P151 and P141
+#some kind of problem exists with the other non factors, check non factors 
+
+```{r}
+c2 = c("age", "gender", "WBCs", "HG","Platelets","AST__SGOT_","ALT__SGPT_","S_Albumin", "bilirubin") 
+xa2 = aggregate(x = liver_data[c2], by = liver_data["type"], FUN = mean)
+xa2
+```
+# remove wbc and Platelets as they cause fitted prob to be 1, not sure why
+```{r}
+fit3<-glm(type ~ age + HG + AST__SGOT_ + ALT__SGPT_ + S_Albumin + bilirubin, data = dataclean, family = binomial())
+summary(fit3)
+```
+#Most significant factors are Age, HG, and ALT__SGPT_ 
+```{r}
+fit4 = glm(type ~ APC + FHIT + P15 + P73 + P14 + P16 + DAPK + RAR_ + RASSF1A + O6MGMT  + E_cadherin + methyl + age + gender + HG + AST__SGOT_ + ALT__SGPT_ + S_Albumin + bilirubin,data = dataclean, family = binomial())
+summary(fit4)
+```
+# Not sure why when both fits are combined prob becomes zero or one, can't use stepwise for feature selection, go with most significant factors from both models. 
+```{r}
+fit5 = glm(type ~ APC + P15 + P14 + age + HG + ALT__SGPT_, data=dataclean, family = binomial )
+summary(fit5)
+```
+#most significant from reduced model are p15, p14,age, and hg
+```{r}
+fit6 = glm(type ~ P15 + P14 + age + HG , data=dataclean, family = binomial )
+summary(fit6)
+```
+```{r}
+fit7 = glm(type ~ P15  + age + HG , data=dataclean, family = binomial )
+summary(fit7)
+```
+#Final model type ~ P15  + age + HG
+
+#SVM for predictive modeling 
+```{r}
+grid <- expand.grid(C =c(seq(0,5, by = 0.1)))
+set.seed(1)
+library(caret)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svm1 <- train(type ~ P15  + age + HG,method = "svmLinear", trControl  = trctrl2,
+data = dataclean, tuneGrid = grid)
+svm1$results
+```
+#most efficient model predicts with 90% accuracy and tunign parameter 0.1.
+
+#Run model on na.omit on hg only inorder to have more data points 
+```{r}
+dataclean2 = liver_data[!is.na(liver_data["HG"]),]
+str(dataclean2)
+```
+```{r}
+dataclean2[c] <- lapply(dataclean2[c], factor)
+str(dataclean2)
+```
+```{r}
+fit52 = glm(type ~ APC + P15 + P14 + age + HG + ALT__SGPT_, data=dataclean2, family = binomial )
+summary(fit52)
+```
+```{r}
+fit62 = glm(type ~ APC + P15 + P14 + age + HG, data=dataclean2, family = binomial )
+summary(fit62)
+```
+#Final model for dataclean2 type ~ APC + P15 + P14  + age + HG
+
+#SVM for predictive modeling 
+```{r}
+set.seed(1)
+svm2 <- train(type ~ APC + P15 + P14 + age + HG,method = "svmLinear", trControl  = trctrl2,
+data = dataclean2, tuneGrid = grid)
+svm2$results
+```
+
+#SVM2 yields accuracy of 0.94667 with tuning parameter 0.2
+
+#compare SVM2 to SVM1 on dataclean2
+```{r}
+set.seed(1)
+svm1b <- train(type ~  P15  + age + HG,method = "svmLinear", trControl  = trctrl2,
+data = dataclean2, tuneGrid = grid)
+svm1b$results
+```
+
+#SVM1b yields accuracy of 0.93667 with tuning parameter 0,1
+
+#In conclusion the most significant factors for determinig type are APC, P15, P14, age, and HG. SVM model used for predicting type has formula type ~ APC + P15 + P14  + age + HG with tuning parameter 0.2 and accuracy 0.94667

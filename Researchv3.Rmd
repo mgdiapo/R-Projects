@@ -1,0 +1,113 @@
+---
+title: "Research v3"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+liver_data<-read.csv("ALL DATAlivercancer_Sort.csv")
+head(liver_data,5)
+tail(liver_data,5)
+str(liver_data)
+```
+#Drop trt, patient_workheet2, and id as those aren't what we're interested in. Drop HBV_PCR as it only has values 0 and NA and ALK___Ph as it only has values for C observations, therfore probably not useful.
+```{r}
+dataclean = subset(liver_data, select = -c(trt, patient_Worksheet_2, id, HBV_PCR, Alk__Ph), data = liver_data)
+str(dataclean)
+```
+#Convert 0 1 int variables to tye factor
+```{r}
+c = c("APC","FHIT","P15","P73","P14","P16","DAPK","RAR_","RASSF1A","O6MGMT","E_cadherin","hbs_ag1","methyl")
+dataclean[c] <- lapply(dataclean[c], factor)
+```
+
+```{r}
+str(dataclean)
+```
+#Use knn imputtaion with k=3 inorder to counter missing values
+```{r}
+library(DMwR2)
+```
+```{r}
+dataclean2 <- knnImputation(dataclean,k=3)
+```
+```{r}
+str(dataclean2)
+```
+```{r}
+dfcu2 = lapply(dataclean2[], unique)
+dfcu2
+```
+#Check to see if any factors only hold true for one of the two types
+```{r}
+xa = aggregate(x = liver_data[c], by = liver_data["type"], FUN = sum)
+xa
+```
+#run log regression on factor variables inorder to find which are important
+```{r}
+fit2b<-glm(type ~ APC + FHIT + P15 + P73 + P14 + P16 + DAPK + RAR_ + RASSF1A + O6MGMT  + E_cadherin + methyl,data = dataclean2, family = binomial())
+summary(fit2b)
+```
+#Run logistic regression on numeric type variables inorder to find which variables are significant.Remove wbc and Platelets as they cause fitted prob to be 1.
+
+```{r}
+fit3<-glm(type ~ age + HG + AST__SGOT_ + ALT__SGPT_ + S_Albumin + bilirubin, data = dataclean2, family = binomial())
+summary(fit3)
+```
+#Create new model of significant factors from both factor and int variables
+```{r}
+logfinal <-glm(type ~ APC + FHIT + P15 + P14 + age + HG + bilirubin, data = dataclean2, family = binomial())
+summary(logfinal)
+```
+#Reduce model
+```{r}
+logfinal2 <-glm(type ~ APC + P15 + P14 + age + HG, data = dataclean2, family = binomial())
+summary(logfinal2)
+```
+#APC, P15, P14, age, and HG levels are significant.
+```{r}
+prob=predict(logfinal2,type=c("response"))
+dataclean2$prob=prob
+library(pROC)
+g <- roc(type ~ prob, data = dataclean2)
+plot(g)  
+auc(g)
+```
+#ROC curve looks good
+```{r}
+ pred = (ifelse(prob > 0.5, "T", "C") %>% as.factor())
+```
+#Run confusion matrix
+```{r}
+library(caret)
+confusionMatrix(data = pred, reference = dataclean2$type)
+```
+#Confusion matrix looks good
+#Run SVM as alternative form of classification
+```{r}
+grid <- expand.grid(C =c(seq(0,5, by = 0.1)))
+set.seed(1)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svm1 <- train(type ~ APC + P15 + P14 + age + HG,method = "svmLinear", trControl  = trctrl2,
+data = dataclean2, tuneGrid = grid)
+svm1$results
+```
+#Run confusion matrix
+```{r}
+svm1cm <- confusionMatrix(svm1, norm = "none")
+svm1cm
+```
+#SVM performs slightly better than logistic regression, however logistic regression is easier to interperet
+
+#Run rf as third form of classification
+```{r}
+set.seed(1)
+mtry <- sqrt(ncol(dataclean2))
+tunegrid <- expand.grid(.mtry=mtry)
+rf1 = train(type ~ . , method = "rf",trcontrol = trctrl2, data = dataclean2, tunegrid = tunegrid)
+rf1$results
+```
+```{r}
+confusionMatrix(rf1) 
+```
+#RF performs much better than svm and logistic regression
