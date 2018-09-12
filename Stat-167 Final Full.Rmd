@@ -1,0 +1,617 @@
+---
+title: "Stat-167-Final"
+output: html_document
+---
+Introduction and project description
+
+Data set from Kaggle.com 
+
+Data consists of information regarding 911 calls from montgomery county pennsylvania
+
+8 variables lat, lng, desc, zip, title, timeStamp, twp, addr
+
+Lat: latitude
+lng : longitude
+Desc: description of call
+Title: reason for the call
+Twp: Township
+Addr: address
+
+The questions we would like to answer through this project are
+
+1) What are the top zip codes for 911 calls?
+2) What are the top townships for 911 calls?
+3) What is the most common Reason for a 911 calls?
+4) Which days of the week have the most calls?
+5) On which days are specific reasons the most frequent?
+6) How do calls correspond with day/month/time? 
+7) On what days/hour are calls most frequent? 
+8) How do township  demographics affect frequency of 911 calls?(gather external data)
+9) How do township demographics affect the type of 911 call? 
+
+Data exploration and visualization
+
+
+```{r}
+#Questions 1/2
+library(readr)
+#library(maps)
+library(tidyverse)
+
+
+data_calls<- read.csv("911.csv")
+data_calls
+
+cleandata_calls<- na.omit(data_calls)
+cleandata_calls
+
+
+
+#data_demo<- read.csv("c:/users/lturn002/downloads/911-Calls-Demographics.csv")
+#data_demo
+
+cleandata_calls['zip']
+head(cleandata_calls)
+tail(names(sort(table(cleandata_calls$zip))), 10)
+
+
+#data(cleandata_calls)
+#cleandata_calls$zip = substr(zipcode$zip, 1, 1)
+ 
+
+
+tail(names(sort(table(cleandata_calls$twp))), 10)
+
+#tail(names(sort(table(cleandata_calls$title))), 10)
+
+```
+
+```{r}
+library(ggplot2)
+(freqzip<- cleandata_calls %>%
+  group_by(zip) %>%
+  summarise(freq=n()) %>%
+  arrange(desc(freq)) %>%
+   .[1:10,]
+)
+
+freqzip$zip <- as.factor(freqzip$zip)
+
+ggplot(data=freqzip, aes(x=zip, y=freq)) +
+    geom_bar(stat="identity", mapping=aes(fill=zip))
+
+
+(freqtownships<-cleandata_calls %>%
+    group_by(twp) %>%
+    summarise(freq=n()) %>%
+    arrange(desc(freq)) %>%
+    .[1:3,]
+)
+
+ggplot(data=freqtownships, aes(x=twp, y=freq)) + xlab("townships") +
+  geom_bar(stat="identity", mapping=aes(fill=twp))
+
+
+
+```
+
+```{r}
+#Questions 3/4
+library(readr)
+library(maps)
+library(lubridate)
+library(tidyverse)
+library(tidytext)
+data_calls <- read_csv("911.csv")
+
+data_calls
+
+data_demo <- read_csv("911-Calls-Demographics.csv")
+
+data_demo
+```
+
+```{r}
+#Which days of the week have the most calls?
+
+days.mostcalls <- data_calls %>%
+  mutate(day_week = weekdays(as.Date(data_calls$timeStamp))) %>%
+  count(day_week) %>%
+  arrange(desc(n))
+
+days.mostcalls
+
+ggplot(days.mostcalls, mapping = aes(x = reorder(day_week,n), y = n, fill = day_week)) + geom_bar(stat = "identity") + xlab("Day of the Week") + ylab("Number of Calls")
+```
+
+**The day of the week that has the most calls is Tuesday with 15150 calls**
+
+
+```{r}
+
+str(data_calls)
+#On which days are the specific reasons most frequent?
+Day = weekdays(as.Date(data_calls$timeStamp))
+Day
+
+Reason = data_calls$title
+Reason
+
+table <- data.frame(Day, Reason)
+
+table
+
+# table %>%
+#   group_by(Day, Reason) %>%
+#   count(Reason, Day) %>%
+#   arrange(desc(n))
+
+EMS.days <- table %>% group_by(Day, Reason) %>% mutate(EMS = str_detect(Reason, "EMS")) %>% filter(EMS == T) %>%
+  group_by(EMS, Day) %>%
+  count(EMS,Day)
+
+Fire.days <- table %>% group_by(Day, Reason) %>% mutate(Fire = str_detect(Reason, "Fire")) %>% filter(Fire == T) %>%
+  group_by(Fire, Day) %>%
+  count(Fire,Day)
+
+Traffic.days <- table %>% group_by(Day, Reason) %>% mutate(Traffic = str_detect(Reason, "Traffic")) %>% filter(Traffic == T) %>%
+  group_by(Traffic, Day) %>%
+  count(Traffic,Day)
+
+categories <- rbind(EMS.days, Traffic.days, Fire.days)
+
+EMS.days
+Fire.days 
+Traffic.days
+
+categories.tidy <- categories %>% gather(Ttd, EMS, Traffic, Fire, key = "Reason") %>%
+  filter(!is.na(Ttd))
+  
+categories.tidy
+
+ggplot(categories.tidy, mapping = aes(x = Day, y = n)) + geom_bar(stat = "identity", aes(fill = Reason), position = "dodge") + xlab("Day of the Week") + ylab("Number of Calls")
+
+
+```
+
+Data analysis
+```{r}
+
+
+# Set working directory so we can easily read in the files 
+# getwd()
+# setwd( "C:/Users/justi/OneDrive/Documents/STATS/STAT 167/Group Project" )
+# 
+# # load some libraries
+# 
+library(dplyr)
+library(bindrcpp)
+library(ggplot2)
+library(tidyverse)
+
+
+# read in datasets
+
+calls_data <- read.csv("911.csv", header = TRUE )
+
+names(calls_data)
+attach(calls_data)
+
+
+
+demo_data <- read.csv( "911-Calls-Demographics.csv", header = TRUE )
+
+names(demo_data)
+attach(demo_data)
+
+
+demo_data <- filter( demo_data, !is.na(Mexican) )
+# Last 3 rows are just footnotes with not useable data, so we'll get rid of that from the dataset
+# using a simple filter
+# first column is basically just an index so we'll get rid of that 
+
+
+demo_data <- demo_data %>%
+  dplyr::select( Municipality, Mexican, Puerto.Rican, Cuban, Other.hispanic, X2010.Total.Population, 
+          Black.or.African.American, American.Indian.or.Alaska.Native, Asian..Native.Hawaiian.,
+          White, Other, Two.or.More.Races.2., Median.Income.1., Median.Gross.Rent.1., X2010,
+          Never.Married.1., Now.Married.2., Separated.3., Widowed.4., Divorced.5.)
+
+
+
+
+
+```
+
+
+
+```{r}
+
+#### QUESTION 3 ####
+# What is the most common reason for calling 911?
+# Should be able to simply find the answer to this question using a group_by
+
+
+# this will be in the calls_data dataset
+
+reason_called <- calls_data %>%
+  group_by( title ) %>%
+  summarise( Count = n() )
+
+# the count = n() will let us see the number of records corresponding to a specific call title A.K.A. the reason
+# that someone has called 911 in this area
+
+reason_called_ordered <- arrange( reason_called, desc( Count) ) # arrange the table from most to least calls
+
+( top.6.call.reasons <- head(reason_called_ordered, 6) ) # look at top 6 call reasons 
+names(top.6.call.reasons)
+attach(top.6.call.reasons)
+
+
+
+# We can see in the output below, that the top 6 reasons that 911 is called are as follows:
+# Vehicle accident with 23,066 calls
+# Disabled vehicle with 7,702  calls
+# Fire alarm with       5,496  calls
+# Resipratory emergency 5112   calls
+# Cardiac emergency     5012   calls
+# Fall victim           4863   calls
+
+
+
+# Can't get names of the variables to rename properly, and I just want to display basic information 
+# of the 6 top call reasons, so I will just create a simple dataframe
+reason_names <- c( "Vehicle Accident", "Disabled Vehicle", "Fire Alarm", 
+                   "Resipratory", "Cardiac", "Fall Victim" )
+reason_counts <- c( 23066, 7702, 5496,
+                    5112, 5012, 4863 )
+
+reason_plot_data <- data.frame( reason_names, reason_counts ) # Couldn't get the renaming to work for ggplot
+# so I just made a quick and easy dataframe so the labels would be cleaner in the plot
+attach(reason_plot_data)
+# attach for individual column usage in ggplot 
+
+
+( reason_plot <- ggplot( data = reason_plot_data, aes( x = reorder(reason_names, reason_counts),
+                                                       y = reason_counts) ) +
+    # reorder x variable so that it displays in order from least to greatest call counts
+    geom_bar( stat = "identity", fill = c("salmon", "orange", "yellow", "green", "blue", "violet") )  +
+    # fill to make plot colored, selected colors that are similar to that of group members' existing 
+    # plots for cohesion
+    labs( x = "Call Reason", y = "Number of Calls" )
+    # make labels better to read 
+)
+
+# EMS ASSAULT VICTIM ranked 33 on the list at 657 calls 
+# that is the most called reason for a violence-related emergency
+
+```
+
+We can see a massive spike in calls for vehicle accidents compared to any of the other top six reasons that emergency services are called. This is not necessarily surprising. Also, it is good to note that the most common reason for emergency service 911 calls are related to assaults and are ranked 33 on the list of reasons of 911 calls. This is 657 calls total, versus the 23,066 calls for vehicle accidents
+
+
+```{r}
+####  QUESTION 6 ####
+# HOW DO CALLS CORRESPOND TO DAY/MONTH/TIME?
+
+# SO THIS SHOULD BE IN REGARDS TO THE GRAINULARITY OF THE DATA
+# SO MONTH FREQUENCIES, DAY FREQUENCIES, TIME FREQUENCIES
+
+
+# DATES RANGE FROM DECEMBER 10, 2015 TO AUGUST 24, 2016
+
+
+library(lubridate)
+
+time.stamped <- ymd_hms(timeStamp)
+# this will change the character input into a date/time format that is usable
+
+# so let us decompose the dates and time into more usable vectors so we can begin to plot
+# things like time of day that calls happen, or which days, etc
+
+hour_called <- hour(time.stamped)
+# returns the hour 0-23 in which an emergency call took place
+
+
+day_of_week_called <- weekdays(time.stamped, abbreviate = FALSE)
+# Gives us the days of the week that a call takes place
+
+month_called <- month(time.stamped)
+# gives us a vector of the month in which a call took place
+
+# Now we could in theory add these factors to the dataframe, basically make its own with the separated 
+# dates and times so we could easily do a group_by and summarise sort of deal
+
+# So let's do that to our calls_data 
+
+calls_new_dat <- calls_data %>%
+      mutate( hour = hour(time.stamped),
+              day_of_week = weekdays(time.stamped),
+              month_called = month(time.stamped) )
+
+
+# ok it worked, now we will try to get some details
+
+summarised_days_called <- calls_new_dat %>%
+                            group_by( day_of_week ) %>%
+                            summarise( Count = n() )
+
+  
+
+summarised_hour_called <- calls_new_dat %>%
+                            group_by( hour ) %>%
+                            summarise( Count = n() )
+
+summarised_month_called <- calls_new_dat %>%
+                            group_by( month_called ) %>%
+                            summarise( Count = n() )
+# Note that the month called counts should not be considered at face value because the December observations
+# started on the 10th of the month and the ending August call data finished on the 24th of the month
+# so neither of these two months have complete calling data and probably shouldn't be seen simply as 
+# different by the visualization
+
+
+
+```
+
+
+
+
+```{r}
+#### QUESTION 7 ####
+# ON WHAT DAYS/HOURS ARE CALLS MOST FREQUENT?
+# HOUR FREQUENCIES
+
+# So we just need to make 2 plots that show frequency of calls by day and by hour
+library(ggplot2)
+require(gplots)
+(hour_called_plot <- ggplot( data = summarised_hour_called, aes( x = hour, y = Count ) ) +
+    geom_bar( stat = "identity", fill = colorpanel(24, "black", "blue", "black" ) ) +
+    labs( x = "Hour of Day Called (24 Hour Format)", y = "Frequency" ) +
+    ggtitle( "Frequency of 911 Calls Based on 24-Hour Time Scale" )
+)
+# used the colorpanel to help visualize the time of day better on the scale
+# so black bars are times when its dark outside 
+
+```
+The above plot shows us the frequency of calls based on a 24-hour time scale. So 0 is midnight and 23 is 11:00 P.M.. I decided to change the color gradient so that the bars are black during dark times of the day and blue for when the sun is out, allowing the observer to more easily identify what time of day it is without converting the 24-hour time scale, or having to think about it too much. We can see that there is a pattern, and that pattern appears to follow with typical activity hours of people. I suspect that the peak number of calls around 3:00 to 5:00 P.M. is related to the frequency plot we discussed prior which is based on the reasons for calls. The most common call recieved was for vehicle accidents, well above any of the other call reasons. I suspect that the calls spike here because of rush-hour traffic as most people tend to head home from work around this time. I can always filter the data to get a closer look at the peak hours to support or deny my suspicions. Of course the further analysis cannot "confirm" anything as we can't say for certain that the calls are caused by rush-hour traffic, but it does seem reasonable if the counts are high for vehicle accidents.
+
+```{r}
+
+attach(calls_new_dat)
+
+peak_calls <- filter( calls_new_dat, hour > 15 & hour < 18  )
+# we will filter the peak times for emergency calls 
+
+grouped_reason_for_peak_call <- peak_calls %>%
+                                  group_by( title ) %>%
+                                  summarise( Count = n() )
+# now this will let us find out what the most frequent calls are during this timespan
+# sure enough it is an overwhelming number of vehicle accident calls 
+# we can test to see if the proportion is different from the top two reasons, but i assume that it will be 
+
+( ordered_grouped_peak_reasons <- head( arrange( grouped_reason_for_peak_call, desc( Count ) ), 6 ) )
+
+peak_reason_title <- c( "T: Vehicle Accident", "Vehicle Disabled", "EMS: Accident", 
+                        "Fire alarm", "Fall Victim", "Respiratory"  )
+
+peak_reason_cnt <- c( 4135, 1144, 657, 595, 503, 485 )
+
+ordered_grouped_peak_reasons_renamed <- data.frame( peak_reason_title, peak_reason_cnt )
+
+# vehicle accident is 4135 calls in this time frame 
+# disabled vehicle is 1144 calls in the same time frame
+( total.peak.calls <- sum(ordered_grouped_peak_reasons$Count) ) # gives us total so we can get some proportions
+
+# 7519 calls total during the peak hours
+
+( p.peak.va <- (ordered_grouped_peak_reasons$Count[1]) / 7519 ) # about 55% of calls are vehcile accidents
+
+( q.peak.va <- 1 - p.peak.va )
+
+( p.peak.dv <- (ordered_grouped_peak_reasons$Count[2]) / 7519 ) # only 15% of calls are for disabled vehicles
+
+( q.peak.dv <- 1 - p.peak.dv )
+
+( p.pooled.peak <- (ordered_grouped_peak_reasons$Count[1] + ordered_grouped_peak_reasons$Count[2]) / (7519*2) )
+
+( q.pooled.peak <- 1 - p.pooled.peak )
+# can run a 2-prop z test for difference 
+# obviously if vehicle accidents is significantly larger than disabled vehicles, then we can say
+# that it is significantly larger than all of the less frequent calls
+
+# Ho: p(va) = p(dv) 
+# Ha: p(va) != p(dv)
+
+( z.score.peak.calls <- ( p.peak.va - p.peak.dv ) / sqrt( (p.pooled.peak*q.pooled.peak)*(2/7519) ) )
+
+# obviously a significant difference 
+# p-value < 0.0001 => reject null
+
+(peak.call.reason.plot <- ggplot( data = ordered_grouped_peak_reasons_renamed, 
+                                  aes( x = reorder( peak_reason_title, peak_reason_cnt ),
+                                       y = peak_reason_cnt) ) +
+  geom_bar( stat = "identity", fill = c( "salmon", "orange", "yellowgreen", "green", "blue", "violet" ) ) +
+  labs( x = "Reason Called", y = "Frequency" ) +
+  ggtitle( "Reasons for 911 Call During Peak Activity")
+)
+```
+This plot shows that the frequency of calls is similar in its distribution to the overall common call reasons. Just from looking at this plot we can see that there is a large amount of vehicle accidents during this time, approximately 55% of all calls from 3:00 to 5:00 P.M. are for traffic vehicle accidents. A Two-Proportion Z test was conducted in order to see if there was a significantly higher proportion of calls for vehicle accidents than vehicle disabled calls (approx. 15%). Our p-value was less than 0.0001, so we concluded a significantly higher proportion of calls for vehicle accidents versus the other calls. Obviously, if accident calls outnumber vehicles disabled, then we can say that it is higher than the rest of the ordered call data during this time span. This should be apparent from the above plot. The above plot shows us the top 6 reasons for a 911 call from 3:00 to 5:00 P.M.
+
+
+
+```{r}
+
+# FREQUENCY OF CALLS BY DAY OF THE WEEK
+
+# So our dataframe for summarised days called is sort of out of order, we could always find
+# a way to reorder it, but its a very small dataframe so we'll just create our own
+
+day.of.wk <- c( "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" )
+
+day.wk.call.cnt <- c( 12136, 14680, 15150, 14879, 14478, 14833, 13336 )
+
+summarised_days_called_ordered <- data.frame( day.of.wk, day.wk.call.cnt, order = seq(1:7) )
+# add the ordered sequence in order to allow ggplot to print the x axis in the order of the 
+# weekdays rather than alphabetical order
+
+( day_of_wk_called_plot <- ggplot( data = summarised_days_called_ordered, aes( x = reorder(day.of.wk, 
+                                                                                           order),
+                                                                               y = day.wk.call.cnt) ) +
+    geom_bar( stat = "identity", fill = c( "salmon", "orange", "yellowgreen",
+                                           "green", "cyan", "blue", "violet" ) ) +
+    labs( x = "Day of Week", y = "Frequency" ) +
+    ggtitle( "Frequency of 911 Calls by Day of the Week")
+)
+# reorder data using our order sequence 
+
+
+
+
+
+```
+
+From this plot, it does not appear that there is really any significant difference between number of calls based on the day of the week. We could further test ot see if there is a difference. Again, this plot is not very surprising to us as the number calls appear to correspond proportionally to the amount of public activity that you would expect. 
+
+Modeling/Model evaluation and validations
+```{r}
+#Question 8: How do demographics affect call frequency?
+data = read.csv('911-CC-By-Twp-Full.csv')
+#Data set is external data joined with count by township data, data cleaning/wrangling done in python.
+```
+```{r}
+head(data,5)
+```
+
+```{r}
+
+datasub <- subset(data, select = -c(X, Municipality))
+head(datasub)
+```
+```{r}
+fullmodel = lm(call.count ~ ., data = datasub)
+backstep = step(fullmodel, direction = "backward", trace=FALSE ) 
+summary(backstep)
+#Backwards stepwise used for vairable selection
+```
+
+```{r}
+backstepmodel = lm(call.count ~ Mexican + X2010.Total.Population +  Black.or.African.American + American.Indian.or.Alaska.Native + Asian..Native.Hawaiian. + White + Other + Never.Married.1. + Separated.3., data = datasub)
+summary(backstepmodel)
+#Final model for demographics affect on call frequency
+```
+
+```{r}
+#Question 9: How do demographics affect call reason? 
+datav2 = read.csv('911-CC-By-Twp-Fullv2.csv')
+#Data set is same dataset from earlier except with new variables EMS_Most_Common, EMS_Likely, Fire_Most_Common, Fire_Likely, Traffic_Most_Common, Traffic_Likely
+
+#(Reason)_Most_Common = yes, no depeding on if that reason had the highest call count in the township (Reason)_Likely = yes, no depending on if the call count for that reason in the township is higher than the average call count for that reason. Data cleaning/wrangling done in python.  
+
+#Used RF for feature selection, SVM for modeling
+```
+
+```{r}
+datasub2 <- na.omit(subset(datav2, select = -c(X, Municipality, EMS, Fire, Traffic), data = datasub2 ))
+datasub2
+```
+```{r}
+#Random forest calssifiers used for feature selection
+set.seed(1)
+library(randomForest)
+datasub2t.rf=randomForest( Traffic_Most_Common ~ . - EMS_Most_Common - Fire_Most_Common, data = datasub2)
+datasub2t.rf
+```
+```{r}
+importance(datasub2t.rf)
+
+```
+```{r}
+set.seed(1)
+datasub2e.rf=randomForest( EMS_Most_Common ~ . - Traffic_Most_Common - Fire_Most_Common, data = datasub2)
+datasub2e.rf
+```
+```{r}
+importance(datasub2e.rf)
+```
+```{r}
+set.seed(1)
+datasub2f.rf=randomForest( Fire_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2f.rf
+```
+
+```{r}
+importance(datasub2f.rf)
+```
+```{r}
+datasub2el.rf=randomForest( EMS_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2el.rf
+```
+```{r}
+importance(datasub2el.rf)
+```
+
+```{r}
+datasub2tl.rf=randomForest( Traffic_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2tl.rf
+```
+```{r}
+importance(datasub2tl.rf)
+```
+
+```{r}
+grid <- expand.grid(C =c(seq(0,5, by = 0.1)))
+set.seed(1)
+library(caret)
+#SVM used for modeling
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmge <- train( EMS_Most_Common ~ Asian..Native.Hawaiian. + Median.Gross.Rent.1.+ Cuban + Median.Income.1.,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmge$results
+```
+```{r}
+set.seed(1)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmgt <- train( Traffic_Most_Common ~ Asian..Native.Hawaiian. + Median.Gross.Rent.1.+ Cuban + Median.Income.1.,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgt$results
+```
+```{r}
+set.seed(1)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmgt <- train( Fire_Likely ~ call.count + Never.Married.1. +  Black.or.African.American + White   ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgt$results
+```
+
+```{r}
+set.seed(1)
+svmmgel <- train( EMS_Likely ~ White + Two.or.More.Races.2. + Now.Married.2. + Widowed.4. ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgel$results
+```
+```{r}
+set.seed(1)
+svmmgtl <- train( Traffic_Likely ~ White + Widowed.4. + Two.or.More.Races.2. + Now.Married.2. ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgtl$results
+```
+
+Conclusions and discussion
+
+The majority of calls came from the zip code 19401 which is located in Norristown, the third most common township. #1 Zip Code ???  #1 Township
+ We can't rule out demographic differences for non-emergency calls made
+The the most significant factor for determining call frequency was the Township's Black or African American population,. 
+The only positive factors are  total population, Mexican, American Indian, and never married
+The top 5 significant factors for EMS_Most_Common and Traffic_Most_Common include Cuban population, Asian population,   Median income Median rent and overall call count
+Significant factors for Fire_Likely White, two or more races, Now married. 
+Significant factors for EMS_LIkely, white, two or more races, married, widowed 
+Significant factors for  Traffic_Likely:  Black population,, widowed, married
+Significantly higher number of calls related to vehicle accidents than any other reasons
+Largest influx of calls occurs around 3:00 to 5:00 PM
+
+Recomendations
+Increase overall first responder presence in townships with high Mexican, American Indian, and never married populations
+Increase EMS presence in areas with high Cuban, Asian,  white, two or more races, married, widowed populations
+Increase Traffic presence in areas with  with high Cuban, Asian,  white,black,  two or more races, married, widowed populations  
+Increase Fire presence in  areas with high White, two or more races, Now married populations. 

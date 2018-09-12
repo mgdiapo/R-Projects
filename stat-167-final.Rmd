@@ -1,0 +1,126 @@
+---
+title: "Stat-167 final Project"
+output: html_document
+---
+
+```{r}
+data = read.csv('911-CC-By-Twp-Full.csv')
+```
+```{r}
+head(data,5)
+```
+
+```{r}
+datasub <- subset(data, select = -c(X, Municipality))
+head(datasub)
+```
+```{r}
+fullmodel = lm(call.count ~ ., data = datasub)
+backstep = step(fullmodel, direction = "backward", trace=FALSE ) 
+summary(backstep)
+```
+```{r}
+bothstep = step(fullmodel, direction = "both", trace=FALSE )
+summary(bothstep)
+```
+```{r}
+minmodel = lm(call.count ~ 1+., data= datasub)
+forwardstep = step(minmodel, direction = 'forward',trace=FALSE)
+forwardstep
+```
+```{r}
+backstepmodel = lm(call.count ~ Mexican + X2010.Total.Population +  Black.or.African.American + American.Indian.or.Alaska.Native + Asian..Native.Hawaiian. + White + Other + Never.Married.1. + Separated.3., data = datasub)
+summary(backstepmodel)
+```
+
+
+```{r}
+datav2 = read.csv('911-CC-By-Twp-Fullv2.csv')
+```
+
+
+
+```{r}
+datasub2 <- na.omit(subset(datav2, select = -c(X, Municipality, EMS, Fire, Traffic), data = datasub2 ))
+datasub2
+```
+```{r}
+set.seed(1)
+library(randomForest)
+datasub2t.rf=randomForest( Traffic_Most_Common ~ . - EMS_Most_Common - Fire_Most_Common, data = datasub2)
+datasub2t.rf
+```
+```{r}
+importance(datasub2t.rf)
+
+```
+```{r}
+set.seed(1)
+datasub2e.rf=randomForest( EMS_Most_Common ~ . - Traffic_Most_Common - Fire_Most_Common, data = datasub2)
+datasub2e.rf
+```
+```{r}
+importance(datasub2e.rf)
+```
+```{r}
+set.seed(1)
+datasub2f.rf=randomForest( Fire_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2f.rf
+```
+
+```{r}
+importance(datasub2f.rf)
+```
+```{r}
+datasub2el.rf=randomForest( EMS_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2el.rf
+```
+```{r}
+importance(datasub2el.rf)
+```
+
+
+```{r}
+datasub2tl.rf=randomForest( Traffic_Likely ~ . - Traffic_Most_Common - Fire_Most_Common - EMS_Most_Common, data = datasub2)
+datasub2tl.rf
+```
+```{r}
+importance(datasub2tl.rf)
+```
+
+```{r}
+grid <- expand.grid(C =c(seq(0,5, by = 0.1)))
+set.seed(1)
+library(caret)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmge <- train( EMS_Most_Common ~ Asian..Native.Hawaiian. + Median.Gross.Rent.1.+ Cuban + Median.Income.1.,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmge$results
+```
+```{r}
+set.seed(1)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmgt <- train( Traffic_Most_Common ~ Asian..Native.Hawaiian. + Median.Gross.Rent.1.+ Cuban + Median.Income.1.,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgt$results
+```
+```{r}
+set.seed(1)
+trctrl2 <- trainControl(method = "cv", number = 10, savePred=T)
+svmmgt <- train( Fire_Likely ~ call.count + Never.Married.1. +  Black.or.African.American + White   ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgt$results
+```
+
+```{r}
+set.seed(1)
+svmmgel <- train( EMS_Likely ~ White + Two.or.More.Races.2. + Now.Married.2. + Widowed.4. ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgel$results
+```
+```{r}
+set.seed(1)
+svmmgtl <- train( Traffic_Likely ~ White + Widowed.4. + Two.or.More.Races.2. + Now.Married.2. ,method = "svmLinear", trControl  = trctrl2,
+data = datasub2, tuneGrid = grid)
+svmmgtl$results
+```
