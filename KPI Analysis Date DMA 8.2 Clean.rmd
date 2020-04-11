@@ -1,0 +1,178 @@
+---
+title: "D&B KPI Analysis Date/DMA"
+author: "Michael Gutierrez"
+date: "August 2, 2019"
+output: html_document
+---
+
+
+```{r}
+#install.packages("caret")
+library(caret)
+#install.packages("corrplot")
+library(corrplot)
+#install.packages("dplyr")
+library(dplyr)
+library(MASS)
+#install.packages("ridge")
+library(ridge)
+#install.packages("glmnet")
+library(glmnet)
+#read in file
+data = read.csv("")
+head(data)
+```
+
+```{r}
+#remove unecessary data form the dataset
+drops = c('ï..datelocal', 'Date.DMA')
+```
+
+```{r}
+data = data[, !(names(data) %in% drops)]
+#Check head
+head(data)
+```
+
+```{r}
+#Convert DMA to factor
+data$DMA = factor(data$DMA)
+is.factor(data$DMA)
+```
+
+```{r}
+#Run full model
+#model for sales 
+fit = lm(Sales ~ . - Sales, data)                   
+summary(fit)             
+```
+```{r}
+step = stepAIC(fit, direction = "both")
+step$anova 
+```
+
+```{r}
+summary(step)
+```
+```{r}
+fit2 = lm(Sales ~. - Sales - DMA - DOW, data)                   
+summary(fit2) 
+```
+
+
+```{r}
+fit3 = lm(Sum.of.cross_environment_total_conversions ~ . - Sum.of.cross_environment_total_conversions - Sales , data)                   
+summary(fit3) 
+```
+
+
+```{r}
+#Remove observations with less than $10 of spend and greater than $45,884 in sales
+data2 = data[ which(data$Sales < 45884 & data$Sum.of.cost >= 10), ]
+head(data2,5)
+```
+
+```{r}
+#Prep corelation Matrix
+#remove unecessary data form the dataset
+drops2 = c('DMA', 'DOW')
+```
+
+```{r}
+cdata = data2[, !(names(data2) %in% drops2)]
+#Check head
+head(cdata)
+```
+
+```{r}
+#run correlation matrix
+res = cor(cdata, use = "complete.obs")
+```
+```{r}
+#Visualize correlation matrix
+corrplot(res, method="color", addCoef.col = "black", tl.cex = 0.5,number.cex=0.5)
+```
+
+```{r}
+write.csv(data2,"", row.names = TRUE)
+```
+
+```{r}
+#scale dataset
+scaleddata = data2
+scaleddata[,3:16] = as.data.frame(scale(data2[,3:16]))
+head(scaleddata)
+```
+
+```{r}
+scaledfit = lm(Sales ~ . - Sales, scaleddata)
+summary(scaledfit)
+```
+
+```{r}
+stepscaled = stepAIC(scaledfit, direction = "both")
+stepscaled$anova 
+```
+
+```{r}
+summary(stepscaled)
+```
+
+```{r}
+#Scaled model, KPIs only
+
+scaledfit2 = lm(Sales ~ . - Sales - DMA - DOW, scaleddata)
+summary(scaledfit2)
+```
+
+```{r}
+scaledstep2 = stepAIC(scaledfit2, direction = "both")
+scaledstep2$anova 
+```
+```{r}
+summary(scaledstep2)
+```
+
+```{r}
+plot(scaledstep2)
+```
+
+```{r}
+library(ggplot2)
+ggpairs(data2)
+```
+```{r}
+#Re-Run fulll model with reduced dataset
+fit4 = lm(Sales ~ . - Sales, data2)                   
+summary(fit4)
+```
+
+```{r}
+plot(fit4)
+```
+
+```{r}
+step2 = stepAIC(fit4, direction = "both")
+step2$anova 
+```
+
+```{r}
+summary(step2)
+```
+
+```{r}
+#Run model without DMAs or DOW
+
+fit5 = lm(Sales ~ . - Sales - DMA - DOW, data2)                   
+summary(fit5)
+```
+
+
+```{r}
+step3 = stepAIC(fit5, direction = "both")
+step3$anova 
+```
+
+```{r}
+summary(step3)
+```
